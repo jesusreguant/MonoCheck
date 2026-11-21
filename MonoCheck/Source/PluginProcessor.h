@@ -34,8 +34,11 @@ public:
     void setStateInformation (const void*, int) override {}
 
     // Lo lee el editor (hilo de interfaz)
-    std::atomic<int>  currentState { NoSignal };  // último estado confirmado
-    std::atomic<bool> monoLatched  { false };     // true = mono retenido (rojo)
+    std::atomic<int>   currentState { NoSignal };  // último estado confirmado
+    std::atomic<bool>  monoLatched  { false };     // true = mono retenido (rojo)
+    std::atomic<bool>  hasSignal    { false };     // hay audio entrando
+    std::atomic<float> peakL        { 0.0f };      // picómetro canal izquierdo (lineal)
+    std::atomic<float> peakR        { 0.0f };      // picómetro canal derecho (lineal)
 
     void resetLatch();
 
@@ -48,8 +51,13 @@ private:
     static constexpr float sideThreshold   = 0.0001f;
     // El mono debe mantenerse este tiempo seguido antes de marcarse en rojo
     static constexpr double minMonoSeconds = 0.5;
+    // Tiempo sin señal antes de mostrar "No audio"
+    static constexpr double signalHoldSeconds = 0.3;
 
-    juce::int64 minMonoSamples = 24000;            // se recalcula en prepareToPlay
+    double sampleRateHz = 44100.0;
+    juce::int64 minMonoSamples    = 22050;         // se recalculan en prepareToPlay
+    juce::int64 signalHoldSamples = 13230;
+    juce::int64 silenceCounter    = 0;             // solo hilo de audio
     std::atomic<juce::int64> monoRunSamples { 0 }; // muestras mono consecutivas
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MonoCheckProcessor)
