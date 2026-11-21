@@ -1,0 +1,44 @@
+name: Build MonoCheck VST3 (macOS + Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S MonoCheck -B build -DCMAKE_BUILD_TYPE=Release -DCOPY_AFTER_BUILD=OFF
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          VST3="$(find build -maxdepth 5 -name 'MonoCheck.vst3' -type d | head -n 1)"
+          echo "Encontrado: $VST3"
+          codesign --force --deep --sign - "$VST3"
+          ditto -c -k --keepParent "$VST3" MonoCheck-VST3-macOS.zip
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vst3 = Get-ChildItem -Path build -Recurse -Directory -Filter MonoCheck.vst3 | Select-Object -First 1
+          Write-Host "Encontrado: $($vst3.FullName)"
+          Compress-Archive -Path $vst3.FullName -DestinationPath MonoCheck-VST3-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MonoCheck-VST3-${{ runner.os }}
+          path: MonoCheck-VST3-${{ runner.os }}.zip
