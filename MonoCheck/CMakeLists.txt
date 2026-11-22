@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
 
-project(MonoCheck VERSION 1.0.0)
+project(MonoCheck VERSION 1.7.0)
 
 include(FetchContent)
 FetchContent_Declare(JUCE
@@ -19,11 +19,19 @@ else()
     option(COPY_AFTER_BUILD "Copiar el plugin a la carpeta de plugins" OFF)
 endif()
 
+# Formatos: VST3 en todos los sistemas; AU (Audio Components) solo en macOS
+if(APPLE)
+    set(PLUGIN_FORMATS VST3 AU)
+else()
+    set(PLUGIN_FORMATS VST3)
+endif()
+
 juce_add_plugin(MonoCheck
     COMPANY_NAME "MiEstudio"
     PLUGIN_MANUFACTURER_CODE Mest
     PLUGIN_CODE Mchk
-    FORMATS VST3
+    FORMATS ${PLUGIN_FORMATS}
+    VST3_CATEGORIES Fx Analyzer
     PRODUCT_NAME "MonoCheck"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
