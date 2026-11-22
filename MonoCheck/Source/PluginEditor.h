@@ -14,17 +14,22 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
 
 private:
-    // Todo se dibuja en un lienzo de 240 x 384 que se escala con la ventana
-    static constexpr float designW = 240.0f;
-    static constexpr float designH = 384.0f;
+    // Tamaño de referencia: solo sirve para calcular el tamaño de textos y detalles
+    static constexpr float refW = 240.0f;
+    static constexpr float refH = 384.0f;
+
+    // Disposición calculada a partir del ancho y el alto reales de la ventana
+    struct Layout
+    {
+        float u = 1.0f;                       // factor de escala para textos y detalles
+        juce::Rectangle<float> panel, meterL, meterR;
+    };
+
+    Layout getLayout() const;
 
     void timerCallback() override;
-    float getScale() const { return (float) getWidth() / designW; }
 
-    static juce::Rectangle<float> getPanelBounds()           { return { 20.0f,  64.0f, 90.0f, 270.0f }; }
-    static juce::Rectangle<float> getMeterBounds (int index) { return { 128.0f + 32.0f * (float) index, 64.0f, 26.0f, 270.0f }; }
-
-    static void drawMeter (juce::Graphics&, juce::Rectangle<float>, float peakDb, float holdDb);
+    static void drawMeter (juce::Graphics&, juce::Rectangle<float>, float peakDb, float holdDb, float u);
     static void updateHold (float& hold, int& timer, float db);
 
     MonoCheckProcessor& processor;
