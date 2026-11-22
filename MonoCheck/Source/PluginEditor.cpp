@@ -284,7 +284,7 @@ bool MonoCheckEditor::keyPressed (const juce::KeyPress& key)
             return true;
         }
 
-        const juce_wchar c = juce::CharacterFunctions::toUpperCase (key.getTextCharacter());
+        const juce::juce_wchar c = juce::CharacterFunctions::toUpperCase (key.getTextCharacter());
 
         if (c > 32 && c != 127)
         {

@@ -25,7 +25,7 @@ MonoCheckProcessor::MonoCheckProcessor()
 {
     thresholdParam = apvts.getRawParameterValue ("threshold");
     resetParam     = apvts.getRawParameterValue ("reset");
-    lastResetValue = resetParam->load();
+    lastResetOn = resetParam->load() > 0.5f;
 }
 
 void MonoCheckProcessor::prepareToPlay (double sampleRate, int)
@@ -36,7 +36,7 @@ void MonoCheckProcessor::prepareToPlay (double sampleRate, int)
     silenceCounter    = 0;
     monoRunSamples    = 0;
     hasSignal         = false;
-    lastResetValue    = resetParam->load();
+    lastResetOn       = resetParam->load() > 0.5f;
     peakL = 0.0f;
     peakR = 0.0f;
 }
@@ -90,10 +90,10 @@ void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     // El audio pasa sin modificarse (plugin solo de medición)
 
     // Reset pedido desde el DAW (parámetro automatizable): cada cambio de valor resetea
-    const float resetValue = resetParam->load();
-    if (resetValue != lastResetValue)
+    const bool resetOn = resetParam->load() > 0.5f;
+    if (resetOn != lastResetOn)
     {
-        lastResetValue = resetValue;
+        lastResetOn = resetOn;
         resetLatch();
     }
 

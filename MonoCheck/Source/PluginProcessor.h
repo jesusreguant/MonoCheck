@@ -66,7 +66,7 @@ private:
 
     std::atomic<float>* thresholdParam = nullptr;
     std::atomic<float>* resetParam     = nullptr;
-    float lastResetValue = 0.0f;
+    bool  lastResetOn = false;
 
     double sampleRateHz = 44100.0;
     juce::int64 minMonoSamples    = 240;
