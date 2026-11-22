@@ -5,12 +5,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout MonoCheckProcessor::createLa
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "threshold", 1 }, "Umbral",
-        juce::NormalisableRange<float> (thresholdMinDb, thresholdMaxDb, 0.5f),
-        thresholdDefaultDb,
-        juce::AudioParameterFloatAttributes().withLabel ("dB")));
-
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "reset", 1 }, "Reset", false));
 
@@ -23,22 +17,14 @@ MonoCheckProcessor::MonoCheckProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "MonoCheckState", createLayout())
 {
-    thresholdParam = apvts.getRawParameterValue ("threshold");
-    resetParam     = apvts.getRawParameterValue ("reset");
+    resetParam = apvts.getRawParameterValue ("reset");
     lastResetOn = resetParam->load() > 0.5f;
 }
 
 void MonoCheckProcessor::prepareToPlay (double sampleRate, int)
 {
-    sampleRateHz      = sampleRate;
-    minMonoSamples    = (juce::int64) (sampleRate * minMonoSeconds);
-    signalHoldSamples = (juce::int64) (sampleRate * signalHoldSeconds);
-    silenceCounter    = 0;
-    monoRunSamples    = 0;
-    hasSignal         = false;
-    lastResetOn       = resetParam->load() > 0.5f;
-    peakL = 0.0f;
-    peakR = 0.0f;
+    engine.prepare (sampleRate);
+    lastResetOn = resetParam->load() > 0.5f;
 }
 
 bool MonoCheckProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -52,40 +38,14 @@ bool MonoCheckProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
     return in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
 }
 
-void MonoCheckProcessor::resetLatch()
-{
-    monoLatched = false;
-    monoRunSamples = 0;
-    currentState = NoSignal;
-}
-
-// Un bloque mono suma al contador; al llegar al tiempo mínimo se retiene en rojo.
-// Un bloque estéreo reinicia el contador.
-void MonoCheckProcessor::registerBlock (bool isMono, int numSamples)
-{
-    if (isMono)
-    {
-        const auto run = monoRunSamples.load() + numSamples;
-        monoRunSamples = run;
-
-        if (run >= minMonoSamples)
-        {
-            currentState = Mono;
-            monoLatched = true;
-        }
-    }
-    else
-    {
-        monoRunSamples = 0;
-        currentState = Stereo;
-    }
-}
-
 void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
     const int n = buffer.getNumSamples();
+
+    if (n <= 0 || buffer.getNumChannels() < 1)
+        return;
 
     // El audio pasa sin modificarse (plugin solo de medición)
 
@@ -94,11 +54,8 @@ void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     if (resetOn != lastResetOn)
     {
         lastResetOn = resetOn;
-        resetLatch();
+        engine.reset();
     }
-
-    // Umbral de detección elegido por el usuario
-    const float signalThreshold = juce::Decibels::decibelsToGain (thresholdParam->load(), -120.0f);
 
     // Pista mono: no hay canal R, se usa L para ambos
     const bool monoBus = getTotalNumInputChannels() < 2 || buffer.getNumChannels() < 2;
@@ -106,45 +63,7 @@ void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     const float* l = buffer.getReadPointer (0);
     const float* r = monoBus ? l : buffer.getReadPointer (1);
 
-    float peakLBlock = 0.0f, peakRBlock = 0.0f, side = 0.0f;
-
-    for (int i = 0; i < n; ++i)
-    {
-        peakLBlock = juce::jmax (peakLBlock, std::abs (l[i]));
-        peakRBlock = juce::jmax (peakRBlock, std::abs (r[i]));
-        side       = juce::jmax (side,       std::abs (l[i] - r[i]));
-    }
-
-    // Picómetro: sube al instante y cae unos 20 dB por segundo
-    const float decay = (float) std::pow (10.0, -(double) n / sampleRateHz);
-    peakL = juce::jmax (peakLBlock, peakL.load() * decay);
-    peakR = juce::jmax (peakRBlock, peakR.load() * decay);
-
-    const float peak = juce::jmax (peakLBlock, peakRBlock);
-
-    if (peak >= signalThreshold)
-    {
-        silenceCounter = 0;
-        hasSignal = true;
-
-        // En señales muy bajas la diferencia L-R se compara también con el propio nivel (-40 dB),
-        // para no confundir un estéreo muy bajo con mono
-        const float sideLimit = juce::jmin (sideThreshold, peak * 0.01f);
-        registerBlock (side < sideLimit, n);
-    }
-    else
-    {
-        silenceCounter += n;
-
-        if (silenceCounter >= signalHoldSamples)
-        {
-            hasSignal = false;
-
-            // Sin señal: el rojo retenido se conserva; si no, vuelve a "No audio"
-            if (! monoLatched.load() && monoRunSamples.load() == 0)
-                currentState = NoSignal;
-        }
-    }
+    engine.process (l, r, n);
 }
 
 void MonoCheckProcessor::getStateInformation (juce::MemoryBlock& destData)
