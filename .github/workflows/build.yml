@@ -17,16 +17,26 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure
-        run: cmake -S MonoCheck -B build -DCMAKE_BUILD_TYPE=Release -DCOPY_AFTER_BUILD=OFF
+        shell: bash
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCOPY_AFTER_BUILD=OFF
 
       - name: Build
-        run: cmake --build build --config Release
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build --config Release 2>&1 | tee build.log
+
+      - name: Mostrar errores de compilacion
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "error( C[0-9]+)?:|fatal error|Error [0-9]" build.log | head -n 20 | while IFS= read -r line; do echo "::error::${line}"; done || true
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          VERSION="$(grep -m1 '^project' MonoCheck/CMakeLists.txt | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
+          VERSION="$(grep -m1 '^project' CMakeLists.txt | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
           VST3="$(find build -maxdepth 5 -name 'MonoCheck.vst3' -type d | head -n 1)"
           AU="$(find build -maxdepth 5 -name 'MonoCheck.component' -type d | head -n 1)"
           echo "Version: $VERSION"
