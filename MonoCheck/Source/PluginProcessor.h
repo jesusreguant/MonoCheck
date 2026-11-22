@@ -7,6 +7,11 @@ class MonoCheckProcessor : public juce::AudioProcessor
 public:
     enum State { NoSignal = 0, Stereo = 1, Mono = 2 };
 
+    // Umbral de detección (nivel mínimo, en dBFS, a partir del cual el detector y el medidor actúan)
+    static constexpr float thresholdMinDb     = -100.0f;
+    static constexpr float thresholdMaxDb     = -20.0f;
+    static constexpr float thresholdDefaultDb = -90.0f;
+
     MonoCheckProcessor();
     ~MonoCheckProcessor() override = default;
 
@@ -30,8 +35,13 @@ public:
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
 
-    void getStateInformation (juce::MemoryBlock&) override {}
-    void setStateInformation (const void*, int) override {}
+    void getStateInformation (juce::MemoryBlock&) override;
+    void setStateInformation (const void*, int) override;
+
+    // Parámetros (se guardan en el proyecto del DAW y se pueden automatizar):
+    //   "threshold" = umbral de detección en dB
+    //   "reset"     = cada cambio de valor resetea el rojo (para asignarlo a una tecla/controlador del DAW)
+    juce::AudioProcessorValueTreeState apvts;
 
     // Lo lee el editor (hilo de interfaz)
     std::atomic<int>   currentState { NoSignal };  // último estado confirmado
@@ -43,20 +53,23 @@ public:
     void resetLatch();
 
 private:
+    static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void registerBlock (bool isMono, int numSamples);
 
-    // Por debajo de esto se considera silencio (-90 dBFS)
-    static constexpr float signalThreshold = 0.000031623f;
     // Diferencia L-R por debajo de esto = mono (-80 dBFS); en señales muy bajas se usa además
     // un límite relativo al propio nivel (ver processBlock)
     static constexpr float sideThreshold   = 0.0001f;
-    // El mono debe mantenerse este tiempo seguido antes de marcarse en rojo
-    static constexpr double minMonoSeconds = 0.5;
+    // El mono debe mantenerse este tiempo seguido antes de marcarse en rojo (casi instantáneo)
+    static constexpr double minMonoSeconds = 0.005;
     // Tiempo sin señal antes de mostrar "No audio"
     static constexpr double signalHoldSeconds = 0.3;
 
+    std::atomic<float>* thresholdParam = nullptr;
+    std::atomic<float>* resetParam     = nullptr;
+    float lastResetValue = 0.0f;
+
     double sampleRateHz = 44100.0;
-    juce::int64 minMonoSamples    = 22050;         // se recalculan en prepareToPlay
+    juce::int64 minMonoSamples    = 240;
     juce::int64 signalHoldSamples = 13230;
     juce::int64 silenceCounter    = 0;             // solo hilo de audio
     std::atomic<juce::int64> monoRunSamples { 0 }; // muestras mono consecutivas

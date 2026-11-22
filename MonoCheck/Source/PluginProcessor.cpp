@@ -1,11 +1,31 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+juce::AudioProcessorValueTreeState::ParameterLayout MonoCheckProcessor::createLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "threshold", 1 }, "Umbral",
+        juce::NormalisableRange<float> (thresholdMinDb, thresholdMaxDb, 0.5f),
+        thresholdDefaultDb,
+        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "reset", 1 }, "Reset", false));
+
+    return layout;
+}
+
 MonoCheckProcessor::MonoCheckProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "MonoCheckState", createLayout())
 {
+    thresholdParam = apvts.getRawParameterValue ("threshold");
+    resetParam     = apvts.getRawParameterValue ("reset");
+    lastResetValue = resetParam->load();
 }
 
 void MonoCheckProcessor::prepareToPlay (double sampleRate, int)
@@ -16,6 +36,7 @@ void MonoCheckProcessor::prepareToPlay (double sampleRate, int)
     silenceCounter    = 0;
     monoRunSamples    = 0;
     hasSignal         = false;
+    lastResetValue    = resetParam->load();
     peakL = 0.0f;
     peakR = 0.0f;
 }
@@ -68,6 +89,17 @@ void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     // El audio pasa sin modificarse (plugin solo de medición)
 
+    // Reset pedido desde el DAW (parámetro automatizable): cada cambio de valor resetea
+    const float resetValue = resetParam->load();
+    if (resetValue != lastResetValue)
+    {
+        lastResetValue = resetValue;
+        resetLatch();
+    }
+
+    // Umbral de detección elegido por el usuario
+    const float signalThreshold = juce::Decibels::decibelsToGain (thresholdParam->load(), -120.0f);
+
     // Pista mono: no hay canal R, se usa L para ambos
     const bool monoBus = getTotalNumInputChannels() < 2 || buffer.getNumChannels() < 2;
 
@@ -94,6 +126,7 @@ void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     {
         silenceCounter = 0;
         hasSignal = true;
+
         // En señales muy bajas la diferencia L-R se compara también con el propio nivel (-40 dB),
         // para no confundir un estéreo muy bajo con mono
         const float sideLimit = juce::jmin (sideThreshold, peak * 0.01f);
@@ -112,6 +145,19 @@ void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                 currentState = NoSignal;
         }
     }
+}
+
+void MonoCheckProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    if (auto xml = apvts.copyState().createXml())
+        copyXmlToBinary (*xml, destData);
+}
+
+void MonoCheckProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        if (xml->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
 }
 
 juce::AudioProcessorEditor* MonoCheckProcessor::createEditor()
