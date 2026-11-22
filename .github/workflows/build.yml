@@ -1,4 +1,3 @@
-yaml
 name: Build MonoCheck (macOS app + plugins, Windows VST3)
 
 on:
@@ -17,23 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Localizar el proyecto
-        shell: bash
-        run: |
-          if [ -f CMakeLists.txt ]; then
-            PROJECT_DIR=.
-          elif [ -f MonoCheck/CMakeLists.txt ]; then
-            PROJECT_DIR=MonoCheck
-          else
-            echo "::error::No se encuentra CMakeLists.txt ni en la raiz ni en la carpeta MonoCheck"
-            exit 1
-          fi
-          echo "Proyecto en: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
       - name: Configure
         shell: bash
-        run: cmake -S "$PROJECT_DIR" -B build -DCMAKE_BUILD_TYPE=Release -DCOPY_AFTER_BUILD=OFF
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCOPY_AFTER_BUILD=OFF
 
       - name: Build
         shell: bash
@@ -51,7 +36,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          VERSION="$(grep -m1 '^project' "$PROJECT_DIR/CMakeLists.txt" | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
+          VERSION="$(grep -m1 '^project' CMakeLists.txt | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
           VST3="$(find build -maxdepth 5 -name 'MonoCheck.vst3' -type d | head -n 1)"
           AU="$(find build -maxdepth 5 -name 'MonoCheck.component' -type d | head -n 1)"
           APP="$(find build -maxdepth 5 -name 'MonoCheck.app' -type d | head -n 1)"
