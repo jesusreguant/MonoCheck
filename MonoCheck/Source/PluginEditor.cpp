@@ -2,12 +2,23 @@
 
 namespace
 {
-    // Escala del medidor: de -60 a 0 dBFS.
-    // Tramo bajo (-60 a -20 dB): 20 segmentos de 2 dB.
-    // Tramo alto (-20 a 0 dB):   40 segmentos de 0,5 dB (más resolución).
-    constexpr int numLowerSegments = 20;
-    constexpr int numUpperSegments = 40;
-    constexpr int numSegments      = numLowerSegments + numUpperSegments;
+    // Escala visual del medidor: empieza en -∞ (abajo) y termina en 0 dBFS (arriba).
+    // Se define por puntos (dB -> altura de 0 a 1). Cuanto más arriba, más resolución:
+    // -18 dB queda un poco por encima de la mitad (55 %) y de -18 a 0 dB se ocupa el 45 % superior.
+    struct Anchor { float db; float frac; };
+
+    constexpr Anchor anchors[] = {
+        { -90.0f, 0.00f },   // -∞
+        { -70.0f, 0.05f },
+        { -60.0f, 0.10f },
+        { -40.0f, 0.25f },
+        { -30.0f, 0.35f },
+        { -18.0f, 0.55f },
+        {   0.0f, 1.00f }
+    };
+    constexpr int numAnchors = (int) (sizeof (anchors) / sizeof (anchors[0]));
+
+    constexpr int numSegments = 80;        // de -18 a 0 dB: 36 segmentos de 0,5 dB
 
     constexpr float yellowFromDb = -18.0f;  // a partir de aquí, amarillo
     constexpr float redFromDb    = -3.0f;   // a partir de aquí, rojo
@@ -16,31 +27,38 @@ namespace
     const juce::Colour colAmber { 0xfffbbf24 };
     const juce::Colour colRed   { 0xffef4444 };
 
-    float segmentLowDb (int i)
-    {
-        return i < numLowerSegments ? -60.0f + 2.0f * (float) i
-                                    : -20.0f + 0.5f * (float) (i - numLowerSegments);
-    }
-
-    int dbToSegment (float db)
-    {
-        if (db < -20.0f)
-            return juce::jlimit (0, numLowerSegments - 1, (int) ((db + 60.0f) / 2.0f));
-
-        return juce::jlimit (numLowerSegments, numSegments - 1,
-                             numLowerSegments + (int) ((db + 20.0f) / 0.5f));
-    }
-
-    // Posición vertical (0 = abajo, 1 = arriba) de un nivel en dB
+    // Altura (0 = abajo, 1 = arriba) de un nivel en dB
     float dbToFraction (float db)
     {
-        db = juce::jlimit (-60.0f, 0.0f, db);
-        const float lowerShare = (float) numLowerSegments / (float) numSegments;
+        db = juce::jlimit (anchors[0].db, 0.0f, db);
 
-        if (db <= -20.0f)
-            return lowerShare * (db + 60.0f) / 40.0f;
+        for (int i = 1; i < numAnchors; ++i)
+        {
+            if (db <= anchors[i].db)
+            {
+                const float t = (db - anchors[i - 1].db) / (anchors[i].db - anchors[i - 1].db);
+                return anchors[i - 1].frac + t * (anchors[i].frac - anchors[i - 1].frac);
+            }
+        }
 
-        return lowerShare + (1.0f - lowerShare) * (db + 20.0f) / 20.0f;
+        return 1.0f;
+    }
+
+    // Nivel en dB que corresponde a una altura del medidor
+    float fractionToDb (float f)
+    {
+        f = juce::jlimit (0.0f, 1.0f, f);
+
+        for (int i = 1; i < numAnchors; ++i)
+        {
+            if (f <= anchors[i].frac)
+            {
+                const float t = (f - anchors[i - 1].frac) / (anchors[i].frac - anchors[i - 1].frac);
+                return anchors[i - 1].db + t * (anchors[i].db - anchors[i - 1].db);
+            }
+        }
+
+        return 0.0f;
     }
 }
 
@@ -69,13 +87,13 @@ MonoCheckEditor::Layout MonoCheckEditor::getLayout() const
     const float u = juce::jmax (0.3f, juce::jmin (W / refW, H / refH));
     l.u = u;
 
-    const float mx     = 20.0f * u;               // margen lateral
-    const float top    = 64.0f * u;               // bajo la cabecera
-    const float bottom = H - 44.0f * u;           // sobre las etiquetas L / R
+    const float mx     = 14.0f * u;               // margen lateral
+    const float top    = 34.0f * u;               // bajo la cabecera compacta
+    const float bottom = H - 22.0f * u;           // sobre las etiquetas L / R
     const float cw     = W - 2.0f * mx;
 
     const float scaleW   = 36.0f * u;             // espacio para los números de dB
-    const float gap      = 18.0f * u;
+    const float gap      = 14.0f * u;
     const float meterGap = 6.0f * u;
 
     const float remaining = juce::jmax (10.0f, cw - scaleW - gap);
@@ -148,15 +166,17 @@ void MonoCheckEditor::drawMeter (juce::Graphics& g, juce::Rectangle<float> r,
     const float segH = r.getHeight() / (float) numSegments;
     const float gap  = juce::jmax (0.6f, segH * 0.22f);
 
-    const int holdIndex = holdDb > -60.0f ? dbToSegment (holdDb) : -1;
+    const int holdIndex = holdDb > anchors[0].db
+                            ? juce::jlimit (0, numSegments - 1, (int) (dbToFraction (holdDb) * (float) numSegments))
+                            : -1;
 
     for (int i = 0; i < numSegments; ++i)
     {
-        const float lowDb = segmentLowDb (i);
+        const float lowDb = fractionToDb ((float) i / (float) numSegments);
 
-        const juce::Colour base = lowDb >= redFromDb    ? colRed
-                                : lowDb >= yellowFromDb ? colAmber
-                                                        : colGreen;
+        const juce::Colour base = lowDb >= redFromDb    - 0.01f ? colRed
+                                : lowDb >= yellowFromDb - 0.01f ? colAmber
+                                                                : colGreen;
 
         const bool lit = peakDb > lowDb;
 
@@ -181,8 +201,7 @@ void MonoCheckEditor::paint (juce::Graphics& g)
     const auto layout = getLayout();
     const float u  = layout.u;
     const float W  = (float) getWidth();
-    const float H  = (float) getHeight();
-    const float mx = 20.0f * u;
+    const float mx = 14.0f * u;
 
     const bool signal  = processor.hasSignal.load();
     const bool latched = processor.monoLatched.load();
@@ -209,23 +228,16 @@ void MonoCheckEditor::paint (juce::Graphics& g)
     if (colored)
         labelColour = juce::Colours::white;
 
-    // Cabecera: nombre del plugin, firma y versión
+    // Cabecera compacta: nombre a la izquierda; firma y versión en pequeño a la derecha
     g.setColour (juce::Colours::white);
-    g.setFont (juce::FontOptions (22.0f * u, juce::Font::bold));
-    g.drawText ("MonoCheck", juce::Rectangle<float> (mx, 10.0f * u, 160.0f * u, 28.0f * u),
+    g.setFont (juce::FontOptions (14.0f * u, juce::Font::bold));
+    g.drawText ("MonoCheck", juce::Rectangle<float> (mx, 6.0f * u, 120.0f * u, 18.0f * u),
                 juce::Justification::centredLeft, false);
 
-    g.setColour (juce::Colours::white.withAlpha (0.5f));
-    g.setFont (juce::FontOptions (10.0f * u));
-    g.drawText ("TxuSo", juce::Rectangle<float> (mx + 1.0f * u, 37.0f * u, 100.0f * u, 12.0f * u),
-                juce::Justification::centredLeft, false);
-
-    g.setColour (juce::Colours::white.withAlpha (0.3f));
-    g.drawText ("v1.2", juce::Rectangle<float> (W - mx - 60.0f * u, 16.0f * u, 60.0f * u, 12.0f * u),
+    g.setColour (juce::Colours::white.withAlpha (0.45f));
+    g.setFont (juce::FontOptions (9.0f * u));
+    g.drawText ("TxuSo  v1.4", juce::Rectangle<float> (W - mx - 80.0f * u, 9.0f * u, 80.0f * u, 12.0f * u),
                 juce::Justification::centredRight, false);
-
-    g.setColour (juce::Colours::white.withAlpha (0.08f));
-    g.drawLine (mx, 54.0f * u, W - mx, 54.0f * u, 1.0f);
 
     // Cuadro de detección (rectangular, vertical, paralelo a los medidores)
     const auto panel  = layout.panel;
@@ -252,7 +264,17 @@ void MonoCheckEditor::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (15.0f * u, juce::Font::bold));
     g.drawFittedText (label, panel.reduced (4.0f * u).toNearestInt(), juce::Justification::centred, 1, 0.6f);
 
-    // Picómetro vertical L / R (de -60 a 0 dB, más resolución de -20 a 0)
+    if (latched)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.setFont (juce::FontOptions (9.0f * u));
+        g.drawFittedText ("clic para resetear",
+                          juce::Rectangle<float> (panel.getX() + 4.0f * u, panel.getBottom() - 24.0f * u,
+                                                  panel.getWidth() - 8.0f * u, 16.0f * u).toNearestInt(),
+                          juce::Justification::centred, 1, 0.6f);
+    }
+
+    // Picómetro vertical L / R (de -∞ a 0 dB, más resolución cuanto más arriba)
     const auto mL = layout.meterL;
     const auto mR = layout.meterR;
 
@@ -262,9 +284,9 @@ void MonoCheckEditor::paint (juce::Graphics& g)
     drawMeter (g, mL, dbL, holdDbL, u);
     drawMeter (g, mR, dbR, holdDbR, u);
 
-    // Escala en dBFS a la derecha
+    // Escala en dBFS a la derecha (el último valor, -90, se muestra como -∞)
     g.setFont (juce::FontOptions (10.0f * u));
-    for (float db : { 0.0f, -3.0f, -6.0f, -12.0f, -18.0f, -20.0f, -30.0f, -40.0f, -60.0f })
+    for (float db : { 0.0f, -3.0f, -6.0f, -12.0f, -18.0f, -24.0f, -30.0f, -40.0f, -60.0f, -70.0f, -90.0f })
     {
         const float y = mL.getBottom() - dbToFraction (db) * mL.getHeight();
 
@@ -273,7 +295,11 @@ void MonoCheckEditor::paint (juce::Graphics& g)
 
         g.setColour (db == yellowFromDb ? colAmber.withAlpha (0.8f)
                                         : juce::Colours::white.withAlpha (0.55f));
-        g.drawText (juce::String ((int) db),
+
+        const juce::String text = db <= anchors[0].db ? juce::String (juce::CharPointer_UTF8 ("-\xe2\x88\x9e"))
+                                                      : juce::String ((int) db);
+
+        g.drawText (text,
                     juce::Rectangle<float> (mR.getRight() + 10.0f * u, y - 6.0f * u, 28.0f * u, 12.0f * u),
                     juce::Justification::centredLeft, false);
     }
@@ -281,18 +307,8 @@ void MonoCheckEditor::paint (juce::Graphics& g)
     // Etiquetas L / R
     g.setColour (juce::Colours::white.withAlpha (0.7f));
     g.setFont (juce::FontOptions (12.0f * u, juce::Font::bold));
-    g.drawText ("L", juce::Rectangle<float> (mL.getX(), mL.getBottom() + 4.0f * u, mL.getWidth(), 14.0f * u),
+    g.drawText ("L", juce::Rectangle<float> (mL.getX(), mL.getBottom() + 2.0f * u, mL.getWidth(), 14.0f * u),
                 juce::Justification::centred, false);
-    g.drawText ("R", juce::Rectangle<float> (mR.getX(), mR.getBottom() + 4.0f * u, mR.getWidth(), 14.0f * u),
+    g.drawText ("R", juce::Rectangle<float> (mR.getX(), mR.getBottom() + 2.0f * u, mR.getWidth(), 14.0f * u),
                 juce::Justification::centred, false);
-
-    // Ayuda cuando el mono está retenido
-    if (latched)
-    {
-        g.setColour (juce::Colours::white.withAlpha (0.5f));
-        g.setFont (juce::FontOptions (11.0f * u));
-        g.drawText ("Clic en el cuadro para resetear",
-                    juce::Rectangle<float> (0.0f, H - 22.0f * u, W, 16.0f * u),
-                    juce::Justification::centred, false);
-    }
 }
