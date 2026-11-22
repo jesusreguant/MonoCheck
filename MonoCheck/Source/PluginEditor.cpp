@@ -14,10 +14,10 @@ MonoCheckEditor::MonoCheckEditor (MonoCheckProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
     // Ventana escalable manteniendo la proporción (de 67 % a 267 %)
-    setResizeLimits (160, 240, 640, 960);
+    setResizeLimits (160, 256, 640, 1024);
     getConstrainer()->setFixedAspectRatio (designW / designH);
     setResizable (true, true);
-    setSize (240, 360);
+    setSize (240, 384);
 
     startTimerHz (30);
 }
@@ -142,7 +142,25 @@ void MonoCheckEditor::paint (juce::Graphics& g)
     if (colored)
         labelColour = juce::Colours::white;
 
-    // Cuadro de detección (alargado, paralelo a los medidores)
+    // Cabecera: nombre del plugin, firma y versión
+    g.setColour (juce::Colours::white);
+    g.setFont (juce::FontOptions (22.0f, juce::Font::bold));
+    g.drawText ("MonoCheck", juce::Rectangle<float> (20.0f, 10.0f, 160.0f, 28.0f),
+                juce::Justification::centredLeft, false);
+
+    g.setColour (juce::Colours::white.withAlpha (0.5f));
+    g.setFont (juce::FontOptions (10.0f));
+    g.drawText ("TxuSo", juce::Rectangle<float> (21.0f, 37.0f, 100.0f, 12.0f),
+                juce::Justification::centredLeft, false);
+
+    g.setColour (juce::Colours::white.withAlpha (0.3f));
+    g.drawText ("v1.1", juce::Rectangle<float> (designW - 80.0f, 16.0f, 60.0f, 12.0f),
+                juce::Justification::centredRight, false);
+
+    g.setColour (juce::Colours::white.withAlpha (0.08f));
+    g.drawLine (20.0f, 54.0f, designW - 20.0f, 54.0f, 1.0f);
+
+    // Cuadro de detección (rectangular, vertical, paralelo a los medidores)
     const auto panel = getPanelBounds();
 
     if (colored)
@@ -194,8 +212,8 @@ void MonoCheckEditor::paint (juce::Graphics& g)
     // Etiquetas L / R
     g.setColour (juce::Colours::white.withAlpha (0.7f));
     g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    g.drawText ("L", juce::Rectangle<float> (mL.getX(), 316.0f, mL.getWidth(), 14.0f), juce::Justification::centred, false);
-    g.drawText ("R", juce::Rectangle<float> (mR.getX(), 316.0f, mR.getWidth(), 14.0f), juce::Justification::centred, false);
+    g.drawText ("L", juce::Rectangle<float> (mL.getX(), 340.0f, mL.getWidth(), 14.0f), juce::Justification::centred, false);
+    g.drawText ("R", juce::Rectangle<float> (mR.getX(), 340.0f, mR.getWidth(), 14.0f), juce::Justification::centred, false);
 
     // Ayuda cuando el mono está retenido
     if (latched)
@@ -203,6 +221,6 @@ void MonoCheckEditor::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white.withAlpha (0.5f));
         g.setFont (juce::FontOptions (11.0f));
         g.drawText ("Clic en el cuadro para resetear",
-                    juce::Rectangle<float> (0.0f, 336.0f, designW, 16.0f), juce::Justification::centred, false);
+                    juce::Rectangle<float> (0.0f, 362.0f, designW, 16.0f), juce::Justification::centred, false);
     }
 }
