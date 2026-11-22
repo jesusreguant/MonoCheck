@@ -94,7 +94,10 @@ void MonoCheckProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     {
         silenceCounter = 0;
         hasSignal = true;
-        registerBlock (side < sideThreshold, n);
+        // En señales muy bajas la diferencia L-R se compara también con el propio nivel (-40 dB),
+        // para no confundir un estéreo muy bajo con mono
+        const float sideLimit = juce::jmin (sideThreshold, peak * 0.01f);
+        registerBlock (side < sideLimit, n);
     }
     else
     {

@@ -45,9 +45,10 @@ public:
 private:
     void registerBlock (bool isMono, int numSamples);
 
-    // Por debajo de esto se considera silencio (-60 dBFS)
-    static constexpr float signalThreshold = 0.001f;
-    // Diferencia L-R por debajo de esto = mono (-80 dBFS)
+    // Por debajo de esto se considera silencio (-90 dBFS)
+    static constexpr float signalThreshold = 0.000031623f;
+    // Diferencia L-R por debajo de esto = mono (-80 dBFS); en señales muy bajas se usa además
+    // un límite relativo al propio nivel (ver processBlock)
     static constexpr float sideThreshold   = 0.0001f;
     // El mono debe mantenerse este tiempo seguido antes de marcarse en rojo
     static constexpr double minMonoSeconds = 0.5;

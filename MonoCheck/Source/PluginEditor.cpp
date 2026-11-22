@@ -236,7 +236,7 @@ void MonoCheckEditor::paint (juce::Graphics& g)
 
     g.setColour (juce::Colours::white.withAlpha (0.45f));
     g.setFont (juce::FontOptions (9.0f * u));
-    g.drawText ("TxuSo  v1.4", juce::Rectangle<float> (W - mx - 80.0f * u, 9.0f * u, 80.0f * u, 12.0f * u),
+    g.drawText ("TxuSo  v1.5", juce::Rectangle<float> (W - mx - 80.0f * u, 9.0f * u, 80.0f * u, 12.0f * u),
                 juce::Justification::centredRight, false);
 
     // Cuadro de detección (rectangular, vertical, paralelo a los medidores)
