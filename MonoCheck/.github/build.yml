@@ -1,4 +1,4 @@
-name: Build MonoCheck (macOS PKG + Windows VST3)
+name: Build MonoCheck (macOS app + plugins, Windows VST3)
 
 on:
   workflow_dispatch:
@@ -39,24 +39,30 @@ jobs:
           VERSION="$(grep -m1 '^project' CMakeLists.txt | sed -E 's/.*VERSION ([0-9.]+).*/\1/')"
           VST3="$(find build -maxdepth 5 -name 'MonoCheck.vst3' -type d | head -n 1)"
           AU="$(find build -maxdepth 5 -name 'MonoCheck.component' -type d | head -n 1)"
+          APP="$(find build -maxdepth 5 -name 'MonoCheck.app' -type d | head -n 1)"
           echo "Version: $VERSION"
           echo "VST3: $VST3"
           echo "AU: $AU"
+          echo "APP: $APP"
           codesign --force --deep --sign - "$VST3"
           codesign --force --deep --sign - "$AU"
+          codesign --force --deep --sign - "$APP"
 
-          # ZIP solo con el VST3
-          ditto -c -k --keepParent "$VST3" MonoCheck-VST3-macOS.zip
-
-          # Instalador .pkg (VST3 + AU en las carpetas del sistema)
+          # Instalador .pkg de los plugins (VST3 + AU en las carpetas del sistema)
           mkdir -p pkgroot/Library/Audio/Plug-Ins/VST3 pkgroot/Library/Audio/Plug-Ins/Components pkgscripts
           cp -R "$VST3" pkgroot/Library/Audio/Plug-Ins/VST3/
           cp -R "$AU" pkgroot/Library/Audio/Plug-Ins/Components/
           printf '#!/bin/bash\nkillall -9 AudioComponentRegistrar 2>/dev/null || true\nexit 0\n' > pkgscripts/postinstall
           chmod +x pkgscripts/postinstall
           pkgbuild --root pkgroot --scripts pkgscripts --ownership recommended \
-            --identifier com.txuso.monocheck --version "$VERSION" \
-            --install-location / "MonoCheck-${VERSION}.pkg"
+            --identifier com.txuso.monocheck.plugins --version "$VERSION" \
+            --install-location / "MonoCheck-Plugins-${VERSION}.pkg"
+
+          # DMG de la app (arrastrar a Aplicaciones)
+          mkdir -p dmgroot
+          cp -R "$APP" dmgroot/
+          ln -s /Applications dmgroot/Applications
+          hdiutil create -volname "MonoCheck" -srcfolder dmgroot -ov -format UDZO "MonoCheck-App-${VERSION}.dmg"
           ls -la
 
       - name: Package (Windows)
@@ -73,8 +79,8 @@ jobs:
         with:
           name: MonoCheck-macOS
           path: |
-            MonoCheck-*.pkg
-            MonoCheck-VST3-macOS.zip
+            MonoCheck-App-*.dmg
+            MonoCheck-Plugins-*.pkg
 
       - name: Upload (Windows)
         if: runner.os == 'Windows'
